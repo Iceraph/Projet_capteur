@@ -16,16 +16,15 @@ materiaux = {
 %% Constantes globales
 F = 5;                         % [N]
 c_sec = 2;                     % Coefficient de sécurité
-delta = 1e-3;                  % [m]
+delta = 1.008e-3;                  % [m]
 Ls = 200e-3;                   % [m]
 alpha = delta / Ls;           % [rad]
 R = 10e-3;                     % [m]
-H1 = 49e-3;                    % [m]
-H2 = 45e-3;                    % [m] (non utilisé ici)
+H1 = 45e-3;                    % [m]                  
 coeff_geom = 12 * (2 * H1)^2;  % [m²] Facteur géométrique
 
-k_target = 5000;              % [N/m]
-tol = 0.10;                   % ±10 %
+k_target = 500;              % [N/m]
+tol = 0.5;                   % ±10 %
 
 k_min = 2e7;                  % Init raideur min [N/m]
 k_max = 0;                    % Init raideur max [N/m]
@@ -33,10 +32,15 @@ min_name = ""; max_name = "";
 min_d = 0; max_d = 0;
 min_L = 0; max_L = 0;
 min_rL = 0; max_rL = 0;
+min_F = 0; max_F = 0;
+min_delta = 0; max_delta = 0;
+min_alpha = 0; max_alpha = 0;
+min_sigma_d = 0; max_sigma_d = 0;
+min_sigma_a = 0; max_sigma_a = 0;
 
 %% Paramètres de balayage
-d_vals = 200e-6 : 10e-6 : 300e-6;  % [m]
-rL_vals = 40;                     % [—] Ratio L/d
+d_vals = 100e-6 : 10e-6 : 400e-6;  % [m]
+rL_vals = 20: 1 : 80;                     % [—] Ratio L/d
 
 %% Préallocation des résultats
 solutions = {};
@@ -65,13 +69,17 @@ for i = 1:size(materiaux, 1)
             end
 
             L = rL * d;
+            L = round(L, 3);  % [m]
             if L > 2 * R, continue, end
+            if L ~= 12*10^-3, continue, end %Contrainte de modifications limité du 3D
 
             % Contrainte déplacement
-            if (2 * H1 * alpha) > (2 * sigmaD * L^2) / (3 * E * d), continue, end
+            delta_adm = (2 * sigmaD * L^2) / (3 * E * d);
+            if (2 * H1 * alpha) > delta_adm / c_sec, continue, end
 
             % Contrainte angulaire
-            if alpha > (2 * sigmaD * L) / (pi^2 * E * d), continue, end
+            alpha_adm = (2 * sigmaD * L) / (pi^2 * E * d);
+            if alpha > alpha_adm / c_sec, continue, end
 
             % Contrainte max rotation
             M_alpha = (EI * pi^2 * alpha) / (2 * L);
@@ -85,7 +93,7 @@ for i = 1:size(materiaux, 1)
 
             % Flambage
             Fcr = (pi^2 * EI) / L^2;
-            if F > Fcr, continue, end
+            if F > Fcr / c_sec, continue, end
 
             % Calcul de la raideur
             k_geom = (coeff_geom * EI / L^3);
@@ -99,6 +107,11 @@ for i = 1:size(materiaux, 1)
                 min_d = d * 1e3;  % [mm]
                 min_L = L * 1e3;  % [mm]
                 min_rL = rL;
+                min_F = Fcr;
+                min_delta = delta_adm * 1e3; % [mm]
+                min_alpha = alpha_adm;
+                min_sigma_d = sigma_delta / 1e6;   % [MPa]
+                min_sigma_a = sigma_alpha / 1e6;   % [MPa]
             end
             if k > k_max
                 k_max = k;
@@ -106,6 +119,11 @@ for i = 1:size(materiaux, 1)
                 max_d = d * 1e3;
                 max_L = L * 1e3;
                 max_rL = rL;
+                max_F = Fcr;
+                max_delta = delta_adm * 1e3;   % [mm]
+                max_alpha = alpha_adm;
+                max_sigma_d = sigma_delta / 1e6; % [MPa]
+                max_sigma_a = sigma_alpha / 1e6; % [MPa]
             end
 
             % Filtrage des solutions proches de la cible
@@ -115,6 +133,11 @@ for i = 1:size(materiaux, 1)
                 solutions{idx, 3} = L * 1e3;   % [mm]
                 solutions{idx, 4} = rL;
                 solutions{idx, 5} = k;
+                solutions{idx, 6} = Fcr;   
+                solutions{idx, 7} = delta_adm * 1e3;   % [mm]
+                solutions{idx, 8} = alpha_adm;
+                solutions{idx, 9} = sigma_delta / 1e6; % [MPa]
+                solutions{idx, 10} = sigma_alpha / 1e6; % [MPa]
                 idx = idx + 1;
             end
         end
@@ -124,7 +147,9 @@ end
 %% Affichage des résultats
 if idx > 1
     T = cell2table(solutions(1:idx - 1, :), ...
-        'VariableNames', {'Materiau', 'd_mm', 'L_mm', 'rL', 'k_N_per_m'});
+        'VariableNames', {'Materiau', 'd_mm', 'L_mm', 'rL', 'k_N_per_m', ...
+        'Fcr_N', 'delta_adm_mm', 'alpha_adm_rad', ...
+        'sigma_delta_MPa', 'sigma_alpha_MPa'});
 
     disp('Configurations respectant la tolérance :');
     disp(T);
@@ -134,8 +159,8 @@ end
 
 %% Résumé des extrêmes
 fprintf('\n Statistiques extrêmes :\n');
-fprintf('Raideur minimale : %.2f N/m [%s, d = %.2f mm, L = %.2f mm]\n', ...
-    k_min, min_name, min_d, min_L);
-fprintf('Raideur maximale : %.2f N/m [%s, d = %.2f mm, L = %.2f mm]\n', ...
-    k_max, max_name, max_d, max_L);
+fprintf('Raideur minimale : %.2f N/m [%s, d = %.2f mm, L = %.2f mm, Fcr = %.2f N, delta = %.2f mm, alpha = %.2f rad, sigma_d = %.2f MPa, sigma_a = %.2f MPa,]\n', ...
+    k_min, min_name, min_d, min_L, min_F, min_delta, min_alpha, min_sigma_d, min_sigma_a);
+fprintf('Raideur maximale : %.2f N/m [%s, d = %.2f mm, L = %.2f mm, Fcr = %.2f N, delta = %.2f mm, alpha = %.2f rad, sigma_d = %.2f MPa, sigma_a = %.2f MPa,]\n', ...
+    k_max, max_name, max_d, max_L, max_F, max_delta, max_alpha, max_sigma_d, max_sigma_a);
 fprintf('Raideur cible     : %.2f N/m\n', k_target);
