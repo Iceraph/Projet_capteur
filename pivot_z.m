@@ -41,7 +41,7 @@ rb_vals = 8 : 0.5 : 12;           % b = rb × h
 
 %% Préallocation mémoire
 max_solutions = size(materiaux, 1) * length(h_vals) * length(rl_vals) * length(rb_vals) / 10;
-solutions = cell(ceil(max_solutions), 13);
+solutions = cell(ceil(max_solutions), 14);
 sol_idx = 1;
 
 %% Constante pour calcul raideur
@@ -70,6 +70,10 @@ for i = 1:size(materiaux, 1)
             for rb = rb_vals
                 b = rb * h;
                 I = (b * h_cubed) / 12;
+
+                F_crit = (pi^2 * E * I) / (0.7 *l)^2;
+                if F > F_crit / c_sec, continue, end
+            
                 k = coeff_k * (E * I) / l;
 
                 % Vérification de la raideur
@@ -86,7 +90,7 @@ for i = 1:size(materiaux, 1)
                     solutions(sol_idx, :) = {
                         nom, materiaux{i, 2}, sigmaD / 1e6, ...
                         h * 1e3, theta_max, b * 1e3, l * 1e3, ...
-                        k, rl, rb, delta_k, score, sigma_max / 1e6
+                        k, rl, rb, delta_k, score, sigma_max / 1e6, F_crit
                     };
                     sol_idx = sol_idx + 1;
                 end
@@ -107,7 +111,7 @@ else
         'Alliage', 'E_GPa', 'SigmaD_MPa', ...
         'h_mm', 'theta_max', 'b_mm', 'l_mm', ...
         'k_N_per_m', 'rl', 'rb', ...
-        'delta_k', 'Score', 'Sigma_max_MPa'
+        'delta_k', 'Score', 'Sigma_max_MPa', 'Fcr_N'
     });
 
     % Tri par matériau puis score décroissant
